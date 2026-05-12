@@ -815,44 +815,20 @@ function sendReport() {
 
   body += `\n---\nSent via Fleet Inspection App`;
 
-  // ── Build clean HTML email ──
+  // ── Send via EmailJS (plain text — template renders it cleanly) ──
   const photoItems = reportTarget !== 'forklift'
     ? state[reportTarget].items.filter(it => it.photo)
     : [];
 
-  // Convert plain text body to HTML paragraphs
-  const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  const bodyHtml = body.split('\n').map(line => {
-    if (!line.trim()) return '<br>';
-    if (line.startsWith('=') || line.startsWith('─')) return `<hr style="border:none;border-top:1px solid #ddd;margin:4px 0">`;
-    if (line.match(/^⚠️|^✅/)) return `<p style="margin:4px 0;font-weight:bold">${esc(line)}</p>`;
-    if (line.match(/^\s+•/)) return `<p style="margin:2px 0 2px 16px;color:#333">${esc(line.trim())}</p>`;
-    if (line.match(/^[A-Z\s\/]+:/) || line.match(/^[A-Z\s]+\n?$/)) return `<p style="margin:6px 0 2px;font-weight:bold;color:#3f3f40">${esc(line)}</p>`;
-    return `<p style="margin:2px 0;color:#333">${esc(line)}</p>`;
-  }).join('');
-
-  let htmlBody = `
-  <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
-    <div style="background:#3f3f40;padding:16px 20px;border-bottom:4px solid #fddd00;border-radius:8px 8px 0 0">
-      <h2 style="color:#fddd00;margin:0;font-size:18px;text-transform:uppercase;letter-spacing:1px">${esc(subject)}</h2>
-      <p style="color:#9ea0a3;margin:4px 0 0;font-size:12px">Sent by ${esc(sender||'Unknown')} via RES Fleet Inspection App</p>
-    </div>
-    <div style="background:#f9f9f9;padding:20px;border:1px solid #ddd;border-top:none">
-      ${bodyHtml}
-    </div>
-    ${photoItems.length > 0 ? `
-    <div style="background:#fff;padding:20px;border:1px solid #ddd;border-top:none;border-radius:0 0 8px 8px">
-      <h3 style="color:#3f3f40;margin:0 0 16px;font-size:15px;border-bottom:2px solid #fddd00;padding-bottom:8px">📷 Damage Photos (${photoItems.length})</h3>
-      ${photoItems.map(it => `
-      <div style="margin-bottom:20px">
-        <p style="font-weight:bold;margin:0 0 6px;color:#3f3f40">${esc(it.name)}
-          <span style="color:${it.status==='damaged'?'#c0392b':'#8b0000'};text-transform:uppercase"> — ${esc(it.status||'')}</span>
-          ${it.note ? `<br><span style="font-weight:normal;font-size:12px;color:#666">${esc(it.note)}</span>` : ''}
-        </p>
-        <img src="${it.photo}" style="max-width:100%;border-radius:6px;border:2px solid #fddd00;display:block" alt="${esc(it.name)}">
-      </div>`).join('')}
-    </div>` : `<div style="border:1px solid #ddd;border-top:none;border-radius:0 0 8px 8px;padding:10px 20px;background:#fff;font-size:11px;color:#aaa;text-align:center">RES Fleet Inspection App — Rhino Energy Solutions</div>`}
-  </div>`;
+  // Add photo note to body if photos exist (can't attach in plain text)
+  let finalBody = body;
+  if (photoItems.length > 0) {
+    finalBody += `\n\n📷 DAMAGE PHOTOS (${photoItems.length}):\n`;
+    photoItems.forEach(it => {
+      finalBody += `  • ${it.name} — ${(it.status||'').toUpperCase()}${it.note ? ': '+it.note : ''} [photo attached by sender]\n`;
+    });
+    finalBody += `\nNote: Photos are saved on the sender's device. Please request them if needed.\n`;
+  }
 
   // ── Send via EmailJS ──
   const sendBtn = document.getElementById('report-send-btn');
@@ -861,7 +837,7 @@ function sendReport() {
 
   emailjs.send('service_gxm3t7b', 'template_o3n4kxn', {
     subject: subject,
-    message: htmlBody,
+    message: finalBody,
     sender_name: sender || 'Unknown',
     reply_to: email
   })
