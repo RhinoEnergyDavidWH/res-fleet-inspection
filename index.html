@@ -1379,22 +1379,45 @@ async function exportAndShare(trailer) {
     showSpinner('Generating PDF…');
     const doc = await buildTrailerPdf(trailer);
     const s = state[trailer];
-    const filename = `${trailer}-inspection-${s.site||'RES'}-${s.date}.pdf`.replace(/[^a-z0-9.\-]/gi,'-');
+    const filename = (trailer+'-inspection-'+(s.site||'RES')+'-'+s.date+'.pdf').replace(/[^a-z0-9.\-]/gi,'-');
     const blob = doc.output('blob');
-    const file = new File([blob], filename, {type:'application/pdf'});
     hideSpinner();
 
+    // ── Capacitor (APK) path ──
+    const isNative = window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform();
+    if (isNative) {
+      try {
+        const reader = new FileReader();
+        const base64 = await new Promise((res,rej) => {
+          reader.onload = () => res(reader.result.split(',')[1]);
+          reader.onerror = rej;
+          reader.readAsDataURL(blob);
+        });
+        const { Filesystem, Share } = window.Capacitor.Plugins;
+        await Filesystem.writeFile({ path: filename, data: base64, directory: 'CACHE' });
+        const uriResult = await Filesystem.getUri({ path: filename, directory: 'CACHE' });
+        await Share.share({ title: filename, url: uriResult.uri, dialogTitle: 'Share Inspection PDF' });
+        showToast('Shared \u2713','success');
+      } catch(e) {
+        if (e && e.message && e.message.includes('cancel')) return;
+        console.error(e); showToast('Share failed','error');
+      }
+      return;
+    }
+
+    // ── Browser path ──
+    const file = new File([blob], filename, {type:'application/pdf'});
     if (navigator.canShare && navigator.canShare({files:[file]})) {
       try {
         await navigator.share({files:[file], title:'RES Fleet Inspection', text:'Please find the inspection report attached.'});
-        showToast('Shared ✓','success'); return;
+        showToast('Shared \u2713','success'); return;
       } catch(e) { if(e.name==='AbortError') return; }
     }
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href=url; a.download=filename;
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(()=>URL.revokeObjectURL(url),4000);
-    showToast('PDF saved — attach it to an email or WhatsApp','success');
+    showToast('PDF saved \u2014 attach to email or WhatsApp','success');
   } catch(e) {
     console.error(e); hideSpinner(); showToast('Could not generate PDF','error');
   }
